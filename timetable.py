@@ -545,23 +545,55 @@ def _has(subject: str, needles: list[str]) -> bool:
     return any(re.search(rf"(?<![a-z0-9]){re.escape(n)}(?![a-z0-9])", s) for n in needles)
 
 
-def kit_for_day(lessons: list[Lesson]) -> dict:
-    """Return {'workbooks': [...subjects], 'extras': [...], 'items': [...full checklist...]}."""
-    subjects = []
-    for ls in lessons:
-        if ls.slot == "Reg" or ls.subject == "Free" or _has(ls.subject, KIT_NO_WORKBOOK):
+WORKBOOKS_OPTION = "Workbooks"
+
+
+def kit_options() -> list[str]:
+    """Every item that can be left out for a student, in checklist order."""
+    opts = list(KIT_ALWAYS) + [WORKBOOKS_OPTION]
+    for rule in KIT_RULES:
+        for it in rule["items"]:
+            if it not in opts:
+                opts.append(it)
+    return opts
+
+
+def resolve_leave_out(names: list[str]) -> set[str]:
+    """Match user-typed names (case-insensitive) to kit option names; raise on anything unknown."""
+    by_lower = {o.lower(): o for o in kit_options()}
+    out, bad = set(), []
+    for n in names:
+        n = n.strip()
+        if not n:
             continue
-        if ls.subject not in subjects:
-            subjects.append(ls.subject)
+        key = by_lower.get(n.lower())
+        (out.add(key) if key else bad.append(n))
+    if bad:
+        raise TimetableError(f"Unknown kit item(s): {', '.join(bad)}. Choose from: {', '.join(kit_options())}.")
+    return out
+
+
+def kit_for_day(lessons: list[Lesson], leave_out: set[str] | frozenset = frozenset()) -> dict:
+    """Return {'always', 'workbooks', 'extras', 'items'} for one day, minus anything in leave_out
+    (option names from kit_options(); 'Workbooks' drops every '<Subject> workbook' line)."""
+    out = {x.lower() for x in leave_out}
+    always = [x for x in KIT_ALWAYS if x.lower() not in out]
+    subjects: list[str] = []
+    if WORKBOOKS_OPTION.lower() not in out:
+        for ls in lessons:
+            if ls.slot == "Reg" or ls.subject == "Free" or _has(ls.subject, KIT_NO_WORKBOOK):
+                continue
+            if ls.subject not in subjects:
+                subjects.append(ls.subject)
     extras: list[str] = []
     for ls in lessons:
         for rule in KIT_RULES:
             if _has(ls.subject, rule["subjects"]):
                 for it in rule["items"]:
-                    if it not in extras:
+                    if it not in extras and it.lower() not in out:
                         extras.append(it)
-    items = list(KIT_ALWAYS) + [f"{s} workbook" for s in subjects] + extras
-    return {"workbooks": subjects, "extras": extras, "items": items}
+    items = always + [f"{x} workbook" for x in subjects] + extras
+    return {"always": always, "workbooks": subjects, "extras": extras, "items": items}
 
 
 # ---------------------------------------------------------------------------
@@ -593,7 +625,8 @@ def _fmt_room_tag(ls: Lesson) -> str:
     return BLOCK_SHORT.get(ls.block, ls.block or "")
 
 
-def build_view(tt: Timetable, staff: Staff, show_name_on_cards: bool, logo_path: Path) -> dict:
+def build_view(tt: Timetable, staff: Staff, show_name_on_cards: bool, logo_path: Path,
+               leave_out: set[str] | frozenset = frozenset()) -> dict:
     from PIL import Image
     try:
         with Image.open(logo_path) as im:
@@ -624,8 +657,11 @@ def build_view(tt: Timetable, staff: Staff, show_name_on_cards: bool, logo_path:
                     "move_to": _fmt_room_tag(ls), "fill": st["fill"], "chip": st["chip"], "border": st["border"],
                 })
             wd[d] = {"name": DAY_FULL[d], "short": d, "items": items,
-                     "moves": sum(1 for ls in lessons if ls.move), "kit": kit_for_day(lessons)}
+                     "moves": sum(1 for ls in lessons if ls.move), "kit": kit_for_day(lessons, leave_out)}
         weeks[wk] = wd
+
+    always = [x.lower() for x in KIT_ALWAYS if x.lower() not in {o.lower() for o in leave_out}]
+    always_text = (", ".join(always[:-1]) + " + " + always[-1]) if len(always) > 1 else "".join(always)
 
     legend = [{"label": block_label(b), **block_style(b)} for b in LEGEND_BLOCKS]
     legend += [{"label": block_label(b), **block_style(b)} for b in blocks_present if b not in LEGEND_BLOCKS]
@@ -638,7 +674,7 @@ def build_view(tt: Timetable, staff: Staff, show_name_on_cards: bool, logo_path:
     logo_len = min(avail_len, avail_thick * aspect)
     return {
         "p": PALETTE, "weeks": weeks, "tt": tt, "legend": legend, "logo": logo_path.resolve().as_uri(),
-        "show_name": show_name_on_cards, "days": DAYS, "schedule": SCHEDULE,
+        "show_name": show_name_on_cards, "always_text": always_text, "days": DAYS, "schedule": SCHEDULE,
         "card": {"w": CARD_W_MM, "h": CARD_H_MM, "row": CARD_ROW_PX, "gap": CARD_GAP_ROW_PX,
                  "row_gap": CARD_ROW_GAP_PX, "strip_w": CARD_STRIP_W_PX, "strip_h": strip_h,
                  "logo_len": round(logo_len, 2), "logo_thick": round(logo_len / aspect, 2),
@@ -766,6 +802,21 @@ def yes_no(prompt: str, default: bool) -> bool:
     return default if not ans else ans.startswith("y")
 
 
+def ask_leave_out() -> set[str]:
+    opts = kit_options()
+    print("\nKit list items (all are included by default):")
+    for i, o in enumerate(opts, 1):
+        print(f"  {i:>2}. {o}")
+    while True:
+        raw = input("Leave any out for this student? Numbers separated by commas, or Enter to include all: ").strip()
+        if not raw:
+            return set()
+        picks = [x for x in raw.replace(" ", "").split(",") if x]
+        if all(x.isdigit() and 1 <= int(x) <= len(opts) for x in picks):
+            return {opts[int(x) - 1] for x in picks}
+        print(f"  Please enter numbers between 1 and {len(opts)}.")
+
+
 def print_summary(tt: Timetable, staff: Staff) -> None:
     print(f"\n{tt.student} - {tt.tutor_group} - tutor room {tt.tutor_room or '?'} - tutor "
           f"{staff.name(tt.tutor_code) if tt.tutor_code else '?'}")
@@ -795,6 +846,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--inspect", action="store_true", help="Print every word + coordinates in the PDF and exit")
     ap.add_argument("--name", help="Student name (skips the prompt)")
     ap.add_argument("--names-on-cards", choices=["yes", "no"], help="Skips the prompt about names on cards")
+    ap.add_argument("--leave-out", metavar="ITEMS",
+                    help="Comma-separated kit items to leave off this student's lists, e.g. \"Lunch,Hair tied back\" "
+                         "(skips the prompt). Use \"none\" to include everything.")
     ap.add_argument("--yes", action="store_true", help="Skip the 'Looks right?' confirmation")
     ap.add_argument("--refresh-staff", action="store_true", help="Re-download the staff list now")
     ap.add_argument("--offline", action="store_true", help="Don't contact the staff website")
@@ -819,6 +873,10 @@ def main(argv: list[str] | None = None) -> int:
             show = args.names_on_cards == "yes"
         else:
             show = yes_no("Include the student's name on the kit cards? [y/N] ", False)
+        if args.leave_out is not None:
+            leave_out = resolve_leave_out([] if args.leave_out.lower() == "none" else args.leave_out.split(","))
+        else:
+            leave_out = ask_leave_out()
         staff = Staff.load(refresh=args.refresh_staff, offline=args.offline)
         print_summary(tt, staff)
         if args.debug:
@@ -828,7 +886,7 @@ def main(argv: list[str] | None = None) -> int:
         if not args.yes and not yes_no("\nLooks right? [Y/n] ", True):
             print("Aborted. Run with --inspect to see what is in the PDF.")
             return 1
-        view = build_view(tt, staff, show, logo)
+        view = build_view(tt, staff, show, logo, leave_out)
         tt_path, cards_path, warnings = render_pdfs(view, Path(args.out), name, debug=args.debug)
         print(f"\nWrote {tt_path}\nWrote {cards_path}")
         for w in warnings:
@@ -840,7 +898,7 @@ def main(argv: list[str] | None = None) -> int:
     except TimetableError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, EOFError):
         print()
         return 130
 

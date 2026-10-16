@@ -167,3 +167,34 @@ def test_overflow_check_flags_tall_card(fonts):
             '<div class="card" data-label="tall"><div class="inner"><div style="height:70mm"></div></div></div>')
     warnings = T.check_card_fit(HTML(string=html).render(), expected_cards=1)
     assert len(warnings) == 1 and "tall" in warnings[0]
+
+
+def test_kit_leave_out():
+    ls = [T.Lesson("P1", s, "D1", "D", [], "", "") for s in ("Maths", "PE", "Science", "Food", "RE")]
+    out = T.resolve_leave_out(["lunch", "Hair tied back", "workbooks"])
+    k = T.kit_for_day(ls, out)
+    assert k["always"] == ["Pencil case", "Water bottle"]
+    assert k["workbooks"] == [] and not any("workbook" in i for i in k["items"])
+    assert "Hair tied back" not in k["items"] and "Lunch" not in k["items"]
+    assert "PE kit" in k["items"] and "Tie" in k["items"]
+    assert T.kit_for_day(ls)["always"] == T.KIT_ALWAYS  # default unchanged
+
+
+def test_kit_leave_out_unknown_item():
+    with pytest.raises(T.TimetableError, match="Unknown kit item"):
+        T.resolve_leave_out(["Sandwiches"])
+
+
+def test_leave_out_reaches_pdf(sample_pdf, tmp_path, fonts):
+    import pdfplumber
+    tt = T.parse_pdf(sample_pdf)
+    view = T.build_view(tt, T.Staff({}, {}), False, T.BASE_DIR / "wixams-logo.png",
+                        T.resolve_leave_out(["Lunch", "Hair tied back"]))
+    tp, cp, warnings = T.render_pdfs(view, tmp_path, "X")
+    assert warnings == []
+    with pdfplumber.open(cp) as p:
+        back = p.pages[1].extract_text()
+    assert "Lunch" not in back and "Hair tied back" not in back and "Pencil case" in back
+    with pdfplumber.open(tp) as p:
+        assert "Every day: pencil case + water bottle" in p.pages[0].extract_text()
+        assert "+ lunch" not in p.pages[0].extract_text()

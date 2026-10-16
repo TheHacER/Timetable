@@ -25,7 +25,15 @@ python timetable.py --pdf "/path/to/Timetable.pdf" [--out ./output] [--logo ./wi
 Ctrl-U clears it), whether to put the name on the kit cards, and to confirm the parsed summary before anything is
 rendered. Other flags: `--debug` (dump `parsed.json` + intermediate HTML to `<out>/debug`), `--inspect` (print every
 word and coordinate in the PDF and exit – use this if a different layout won't parse), `--name`,
-`--names-on-cards yes|no`, `--yes` (non-interactive), `--refresh-staff`, `--offline`.
+`--names-on-cards yes|no`, `--leave-out "Lunch,Hair tied back"`, `--yes` (non-interactive), `--refresh-staff`, `--offline`.
+
+## Leaving kit items out
+
+Not every item applies to every student. After the name questions you are shown the kit items (pencil case, water
+bottle, lunch, workbooks, calculator + protractor, PE kit, hair tied back, food ingredients, tie) and can type the
+numbers to leave off this student's lists, or press Enter to keep everything. Skip the prompt with
+`--leave-out "Lunch,Hair tied back"` (or `--leave-out none`). Omitted items disappear from the card backs, the wall
+timetable's kit list and its "Every day:" line.
 
 ## Printing
 

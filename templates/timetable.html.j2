@@ -77,10 +77,10 @@
     </div>{% endif %}{% endfor %}
   </div>{% endfor %}
   <div class="kit">
-    <div class="kh"><div class="t cap">Kit list</div><div class="e">Every day: pencil case, water bottle + lunch</div></div>
+    <div class="kh"><div class="t cap">Kit list</div>{% if always_text %}<div class="e">Every day: {{ always_text }}</div>{% endif %}</div>
     <div class="kcards">{% for d in days.values() %}
       <div class="kc"><div class="kd cap">{{ d.name }}</div>
-        <div class="kw"><b>Workbooks:</b> {{ d.kit.workbooks | join(', ') }}</div>
+        {% if d.kit.workbooks %}<div class="kw"><b>Workbooks:</b> {{ d.kit.workbooks | join(', ') }}</div>{% endif %}
         <div>{% for x in d.kit.extras %}<span class="tag {{ 'a' if loop.index is odd else 's' }}">{{ x }}</span>{% endfor %}</div></div>{% endfor %}
     </div>
   </div>

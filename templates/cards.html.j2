@@ -40,7 +40,7 @@ html, body { background: #fff; }
 .lists { display: flex; gap: 10px; margin-top: 11px; }
 .lists ul { list-style: none; margin: 0; padding: 0; flex: 1; min-width: 0; }
 .lists li { display: flex; align-items: center; gap: 6px; height: 22px; font-size: 9.5px; font-weight: 400; white-space: nowrap; }
-.lists .bx { flex: none; width: 11px; height: 11px; border: 1px solid {{ p.grey }}; border-radius: 3px; background: #fff; }
+.lists .bx { flex: none; display: block; }
 </style></head><body>
 {# ---------- fronts: left column Week A, right column Week B ---------- #}
 <div class="sheet"><div style="position:absolute;left:{{ card.margin_x }}mm;top:{{ card.margin_y }}mm;width:{{ card.w * card.cols }}mm;height:{{ card.h * card.rows }}mm">
@@ -69,8 +69,8 @@ html, body { background: #fff; }
         <div class="sub">{% if show_name %}{{ tt.student }} · {% endif %}{{ tt.tutor_group }}</div></div>
       <span class="pillw s">Week {{ wk }}</span></div>
     <div class="lists">
-      <ul>{% for x in items[:half] %}<li><span class="bx"></span>{{ x }}</li>{% endfor %}</ul>
-      <ul>{% for x in items[half:] %}<li><span class="bx"></span>{{ x }}</li>{% endfor %}</ul>
+      <ul>{% for x in items[:half] %}<li><svg class="bx" width="11" height="11" viewBox="0 0 11 11"><rect x="0.6" y="0.6" width="9.8" height="9.8" rx="2.4" fill="#fff" stroke="{{ p.grey }}" stroke-width="1"/></svg>{{ x }}</li>{% endfor %}</ul>
+      <ul>{% for x in items[half:] %}<li><svg class="bx" width="11" height="11" viewBox="0 0 11 11"><rect x="0.6" y="0.6" width="9.8" height="9.8" rx="2.4" fill="#fff" stroke="{{ p.grey }}" stroke-width="1"/></svg>{{ x }}</li>{% endfor %}</ul>
     </div>
   </div></div>
 {% endfor %}{% endfor %}
