@@ -1,0 +1,89 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>{{ tt.student }} Timetable</title>
+<style>
+{% include 'common.css.j2' %}
+@page { size: A4 landscape; margin: 8mm; background: {{ p.ground }}; }
+.page { width: 281mm; height: 194mm; display: flex; flex-direction: column; overflow: hidden; }
+.page + .page { page-break-before: always; }
+.hdr { height: 20mm; display: flex; align-items: center; gap: 5mm; }
+.logo-pill { background: {{ p.green }}; border-radius: 999px; padding: 3.2mm 5mm; flex: none; }
+.logo-pill img { height: 9mm; display: block; }
+.who { flex: none; }
+.who .name { font-size: 28px; line-height: 1.05; }
+.who .sub { font-size: 12px; font-weight: 300; margin-top: 1.2mm; color: {{ p.grey2 }}; }
+.legend { display: flex; align-items: center; align-content: center; gap: 2mm; flex: 1; justify-content: center; flex-wrap: wrap; }
+.lg { display: flex; align-items: center; gap: 1.5mm; background: {{ p.surface }}; border-radius: 999px;
+      padding: 1.2mm 3mm 1.2mm 1.5mm; font-size: 10.5px; font-weight: 500; white-space: nowrap; }
+.lg i { display: block; width: 4mm; height: 4mm; border-radius: 999px; border: 1px solid transparent; }
+.wk { width: 19mm; height: 19mm; border-radius: 999px; background: {{ p.accent }}; color: {{ p.ground }};
+      text-align: center; flex: none; padding-top: 2.6mm; }
+.wk .w { font-size: 7.5px; letter-spacing: 1.5px; font-weight: 500; line-height: 1; }
+.wk .l { font-family: 'Caprasimo', serif; font-size: 34px; line-height: 1; margin-top: 0.4mm; }
+.cols { display: flex; gap: 1.5mm; height: 8mm; margin-top: 1mm; align-items: flex-end; padding-bottom: 1.2mm; }
+.cols .dl, .row .dl { width: 19mm; flex: none; }
+.cols .ch { flex: 1; text-align: center; font-size: 11px; font-weight: 500; line-height: 1.1; }
+.cols .ch small { display: block; font-weight: 300; font-size: 9px; color: {{ p.grey2 }}; }
+.cols .gp, .row .pill { width: 6mm; flex: none; }
+.row { display: flex; gap: 1.5mm; height: 22mm; margin-bottom: 2mm; }
+.row .dl { align-self: center; }
+.row .dl .d { font-size: 17px; line-height: 1; }
+.row .dl .m { font-size: 10px; font-weight: 300; margin-top: 1mm; color: {{ p.grey2 }}; }
+.cell { flex: 1; min-width: 0; border-radius: 14px; padding: 2.4mm 2.6mm; display: flex; flex-direction: column;
+        justify-content: space-between; border: 2px solid transparent; }
+.cell .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 1.5mm; }
+.cell .subj { font-size: 15px; font-weight: 500; line-height: 1.1; }
+.mv { background: #fff; border-radius: 999px; padding: 0.4mm 2.2mm; font-size: 8px; font-weight: 500;
+      white-space: nowrap; flex: none; letter-spacing: 0.3px; }
+.cell .bot { display: flex; flex-wrap: wrap; align-items: center; gap: 1mm 1.8mm; }
+.chip { color: #fff; border-radius: 999px; padding: 0.5mm 2.6mm; font-size: 11px; font-weight: 500; white-space: nowrap; }
+.tch { font-size: 10.5px; font-weight: 400; line-height: 1.15; }
+.pill { background: {{ p.pill }}; border-radius: 999px; position: relative; }
+.pill span { position: absolute; left: 50%; top: 50%; width: 20mm; height: 4mm; margin: -2mm 0 0 -10mm;
+             text-align: center; line-height: 4mm; font-size: 8.5px; font-weight: 500; letter-spacing: 1.2px;
+             text-transform: uppercase; color: {{ p.grey }}; transform: rotate(-90deg); }
+.kit { margin-top: 1.5mm; }
+.kit .kh { display: flex; align-items: baseline; gap: 4mm; margin-bottom: 2mm; }
+.kit .kh .t { font-size: 18px; }
+.kit .kh .e { font-size: 11px; font-weight: 300; }
+.kcards { display: flex; gap: 2.5mm; }
+.kc { flex: 1; min-width: 0; background: {{ p.surface }}; border-radius: 14px; padding: 2.6mm 3mm; height: 28mm; overflow: hidden; }
+.kc .kd { font-size: 14px; }
+.kc .kw { font-size: 9.5px; font-weight: 400; margin: 1mm 0 1.4mm; line-height: 1.25; }
+.kc .kw b { font-weight: 500; }
+.tag { display: inline-block; border-radius: 999px; padding: 0.4mm 2.2mm; font-size: 8.5px; font-weight: 500;
+       margin: 0 1mm 1mm 0; }
+.tag.a { background: #f1d5bf; } .tag.s { background: #d9dfc9; }
+</style></head><body>
+{% for wk, days in weeks.items() %}
+<div class="page">
+  <div class="hdr">
+    <div class="logo-pill"><img src="{{ logo }}"></div>
+    <div class="who"><div class="name cap">{{ tt.student }}</div>
+      <div class="sub">Tutor group {{ tt.tutor_group }} · Tutor room {{ tt.tutor_room }}</div></div>
+    <div class="legend">{% for b in legend %}
+      <div class="lg"><i style="background:{{ b.fill }};{% if b.border %}border:1.5px dashed {{ b.border }};{% endif %}"></i>{{ b.label }}</div>{% endfor %}</div>
+    <div class="wk"><div class="w">WEEK</div><div class="l">{{ wk }}</div></div>
+  </div>
+  <div class="cols"><div class="dl"></div>
+    {% for s in schedule %}{% if s.kind == 'lesson' %}<div class="ch">{{ s.label }}<small>{{ s.start }}–{{ s.end }}</small></div>{% else %}<div class="gp"></div>{% endif %}{% endfor %}
+  </div>
+  {% for d in days.values() %}
+  <div class="row">
+    <div class="dl"><div class="d cap">{{ d.short }}</div><div class="m">{{ d.moves }} block move{{ '' if d.moves == 1 else 's' }}</div></div>
+    {% for it in d['items'] %}{% if it.gap %}<div class="pill"><span>{{ it.label }}</span></div>
+    {% else %}<div class="cell" style="background:{{ it.fill }};{% if it.border %}border:2px dashed {{ it.border }};{% endif %}">
+      <div class="top"><div class="subj">{{ it.subject }}</div>{% if it.move %}<div class="mv">MOVE →{{ it.move_to }}</div>{% endif %}</div>
+      <div class="bot">{% if it.room %}<span class="chip" style="background:{{ it.chip }}">{{ it.room }}</span>{% endif %}<span class="tch">{{ it.teacher }}</span></div>
+    </div>{% endif %}{% endfor %}
+  </div>{% endfor %}
+  <div class="kit">
+    <div class="kh"><div class="t cap">Kit list</div><div class="e">Every day: pencil case, water bottle + lunch</div></div>
+    <div class="kcards">{% for d in days.values() %}
+      <div class="kc"><div class="kd cap">{{ d.name }}</div>
+        <div class="kw"><b>Workbooks:</b> {{ d.kit.workbooks | join(', ') }}</div>
+        <div>{% for x in d.kit.extras %}<span class="tag {{ 'a' if loop.index is odd else 's' }}">{{ x }}</span>{% endfor %}</div></div>{% endfor %}
+    </div>
+  </div>
+</div>
+{% endfor %}
+</body></html>

@@ -1,0 +1,6 @@
+fonts/
+output/
+staff_cache.json
+__pycache__/
+.pytest_cache/
+*.pdf
