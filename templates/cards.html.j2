@@ -62,15 +62,15 @@ html, body { background: #fff; }
 <div class="sheet"><div style="position:absolute;left:{{ card.margin_x }}mm;top:{{ card.margin_y }}mm;width:{{ card.w * card.cols }}mm;height:{{ card.h * card.rows }}mm">
 {% for i in range(5) %}{% for col in range(2) %}
   {% set wk = 'B' if col == 0 else 'A' %}{% set d = weeks[wk][days[i]] %}
-  {% set items = d.kit['items'] %}{% set half = (items | length + 1) // 2 %}
+  {% set items = d.kit['items'] %}{% set half = (items | length + 1) // 2 %}{% set lh = 22 if half <= 7 else 19 %}
   <div class="card" data-label="back {{ wk }} {{ d.short }}" style="left:{{ col * card.w }}mm;top:{{ i * card.h }}mm"><div class="inner">
     <div class="hd"><div class="lp"><img src="{{ logo }}"></div>
       <div class="ttl"><div class="pack cap">Pack for {{ d.name }}</div>
         <div class="sub">{% if show_name %}{{ tt.student }} · {% endif %}{{ tt.tutor_group }}</div></div>
       <span class="pillw s">Week {{ wk }}</span></div>
     <div class="lists">
-      <ul>{% for x in items[:half] %}<li><svg class="bx" width="11" height="11" viewBox="0 0 11 11"><rect x="0.6" y="0.6" width="9.8" height="9.8" rx="2.4" fill="#fff" stroke="{{ p.grey }}" stroke-width="1"/></svg>{{ x }}</li>{% endfor %}</ul>
-      <ul>{% for x in items[half:] %}<li><svg class="bx" width="11" height="11" viewBox="0 0 11 11"><rect x="0.6" y="0.6" width="9.8" height="9.8" rx="2.4" fill="#fff" stroke="{{ p.grey }}" stroke-width="1"/></svg>{{ x }}</li>{% endfor %}</ul>
+      <ul>{% for x in items[:half] %}<li style="height:{{ lh }}px"><svg class="bx" width="11" height="11" viewBox="0 0 11 11"><rect x="0.6" y="0.6" width="9.8" height="9.8" rx="2.4" fill="#fff" stroke="{{ p.grey }}" stroke-width="1"/></svg>{{ x }}</li>{% endfor %}</ul>
+      <ul>{% for x in items[half:] %}<li style="height:{{ lh }}px"><svg class="bx" width="11" height="11" viewBox="0 0 11 11"><rect x="0.6" y="0.6" width="9.8" height="9.8" rx="2.4" fill="#fff" stroke="{{ p.grey }}" stroke-width="1"/></svg>{{ x }}</li>{% endfor %}</ul>
     </div>
   </div></div>
 {% endfor %}{% endfor %}

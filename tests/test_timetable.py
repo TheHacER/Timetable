@@ -198,3 +198,82 @@ def test_leave_out_reaches_pdf(sample_pdf, tmp_path, fonts):
     with pdfplumber.open(tp) as p:
         assert "Every day: pencil case + water bottle" in p.pages[0].extract_text()
         assert "+ lunch" not in p.pages[0].extract_text()
+
+
+def test_parse_reminder_rules():
+    assert T.parse_reminder("  Violin   book ") == ("Violin book", None)
+    assert T.parse_reminder("Mon, thu: Violin") == ("Violin", frozenset({"Mon", "Thu"}))
+    assert T.parse_reminder("Note: bring form")[1] is None          # a colon alone isn't a day prefix
+    assert T.parse_reminder("x" * T.MAX_REMINDER_CHARS)[0] == "x" * T.MAX_REMINDER_CHARS
+    with pytest.raises(T.TimetableError, match="limit is 24"):
+        T.parse_reminder("x" * (T.MAX_REMINDER_CHARS + 1))
+    with pytest.raises(T.TimetableError, match="empty"):
+        T.parse_reminder("Mon:   ")
+
+
+def test_parse_reminder_rejects_text_too_wide_for_one_line(fonts):
+    with pytest.raises(T.TimetableError, match="too wide"):
+        T.parse_reminder("W" * T.MAX_REMINDER_CHARS)
+    T.parse_reminder("PERMISSION SLIP FOR TRIP")  # wide caps that still fit
+
+
+def test_reminders_apply_to_listed_days_only():
+    ls = [T.Lesson("P1", "English", "D1", "D", [], "", "")]
+    rem = [T.parse_reminder("Violin"), T.parse_reminder("Mon,Thu: Trumpet")]
+    assert T.kit_for_day(ls, reminders=rem, day="Mon")["items"][-2:] == ["Violin", "Trumpet"]
+    assert T.kit_for_day(ls, reminders=rem, day="Tue")["items"][-1] == "Violin"
+    assert "Trumpet" not in T.kit_for_day(ls, reminders=rem, day="Tue")["items"]
+
+
+def test_cli_reminder_limits(sample_pdf, capsys):
+    common = ["--pdf", str(sample_pdf), "--name", "X", "--names-on-cards", "no", "--leave-out", "none", "--offline"]
+    assert T.main(common + [f"--remind={c}" for c in "abcd"]) == 1
+    assert "At most 3" in capsys.readouterr().err
+    assert T.main(common + ["--remind", "y" * 30]) == 1
+    assert "limit is 24" in capsys.readouterr().err
+
+
+def test_worst_case_card_with_reminders_fits(sample_pdf, tmp_path, fonts):
+    tt = T.parse_pdf(sample_pdf)
+    for slot, subj in zip(["P1", "P2", "P3", "P4", "P5"], ["Maths", "PE", "Science", "Food", "RE"]):
+        les = next(l for l in tt.weeks["A"]["Mon"] if l.slot == slot)
+        les.subject = subj
+    rem = [T.parse_reminder("Mon: PERMISSION SLIP FOR TRIP"[:30]), T.parse_reminder("Violin + music book"),
+           T.parse_reminder("Swimming kit")]
+    view = T.build_view(tt, T.Staff({}, {}), True, T.BASE_DIR / "wixams-logo.png", frozenset(), rem)
+    assert len(view["weeks"]["A"]["Mon"]["kit"]["items"]) == 15
+    tp, cp, warnings = T.render_pdfs(view, tmp_path, "X")
+    assert warnings == []
+
+
+def _kit_card_overflow(html_doc):
+    """Return [(label, overflow_px)] for wall-timetable kit cards whose content is taller than the card."""
+    bad = []
+    for page in html_doc.pages:
+        stack = [page._page_box]
+        while stack:
+            box = stack.pop()
+            el = getattr(box, "element", None)
+            if el is not None and "kc" in (el.get("class") or "").split():
+                limit = box.content_box_y() + box.height
+                worst = max(((d.position_y + d.margin_height(), type(d).__name__, getattr(d, "element_tag", ""))
+                             for d in box.descendants() if d is not box), key=lambda x: x[0])
+                wd = max((d for d in box.descendants() if d is not box), key=lambda d: d.position_y + d.margin_height())
+                if worst[0] > limit + 0.5:
+                    bad.append((worst[1:], round(worst[0] - limit, 1), round(box.height, 1), repr(wd.element.get("class")), (wd.element.text or "")[:30]))
+                continue
+            stack.extend(getattr(box, "children", []) or [])
+    return bad
+
+
+def test_wall_kit_cards_not_clipped_in_worst_case(sample_pdf, fonts):
+    from weasyprint import HTML
+    tt = T.parse_pdf(sample_pdf)
+    for slot, subj in zip(["P1", "P2", "P3", "P4", "P5"], ["Maths", "PE", "Science", "Food", "RE"]):
+        next(l for l in tt.weeks["A"]["Mon"] if l.slot == slot).subject = subj
+    rem = [T.parse_reminder("PERMISSION SLIP FOR TRIP"), T.parse_reminder("Violin + music book"),
+           T.parse_reminder("Swimming kit")]
+    view = T.build_view(tt, T.Staff({}, {}), True, T.BASE_DIR / "wixams-logo.png", frozenset(), rem)
+    doc = HTML(string=T.render_html(view)["timetable"], base_url=str(T.BASE_DIR) + "/").render()
+    assert len(doc.pages) == 2
+    assert _kit_card_overflow(doc) == []

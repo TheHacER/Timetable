@@ -61,6 +61,11 @@ KIT_RULES = [
 SUBJECT_ALIASES = {"mathematics": "Maths", "religious studies": "RE", "religious education": "RE",
                    "physical education": "PE", "design technology": "DT"}
 
+# Free-text reminders (per student). Limits keep each one on a single line of the card-back checklist.
+MAX_REMINDERS = 3
+MAX_REMINDER_CHARS = 24
+REMINDER_MAX_WIDTH_PX = 141          # one checklist column at 9.5px Figtree 400 (measured guard on top of the char limit)
+
 # Block colours -----------------------------------------------------------
 SPORTS = "SP"  # internal key for the Sports/Hall block
 BLOCK_COLOURS = {
@@ -573,9 +578,44 @@ def resolve_leave_out(names: list[str]) -> set[str]:
     return out
 
 
-def kit_for_day(lessons: list[Lesson], leave_out: set[str] | frozenset = frozenset()) -> dict:
+_DAY_PREFIX_RE = re.compile(r"(?is)^\s*((?:mon|tue|wed|thu|fri)[a-z]*(?:\s*,\s*(?:mon|tue|wed|thu|fri)[a-z]*)*)\s*:\s*(.*)$")
+
+
+def _text_width_px(text: str) -> float | None:
+    """Width of text at the checklist font size, or None if the font isn't available to measure."""
+    try:
+        from PIL import ImageFont
+        font = ImageFont.truetype(str(FONTS_DIR / "Figtree-400.ttf"), 950)
+        return font.getlength(text) / 100
+    except Exception:
+        return None
+
+
+def parse_reminder(raw: str) -> tuple[str, frozenset[str] | None]:
+    """Validate one free-text reminder, optionally prefixed with days ("Mon,Thu: Violin").
+    Returns (text, days or None for every day). Raises TimetableError if empty, too long, or too wide for one line."""
+    days = None
+    text = raw
+    m = _DAY_PREFIX_RE.match(raw)
+    if m:
+        days = frozenset(d[:3].capitalize() for d in re.split(r"\s*,\s*", m.group(1).strip()))
+        text = m.group(2)
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text:
+        raise TimetableError("A reminder can't be empty.")
+    if len(text) > MAX_REMINDER_CHARS:
+        raise TimetableError(f"'{text}' is {len(text)} characters; the limit is {MAX_REMINDER_CHARS} so it stays on one line.")
+    width = _text_width_px(text)
+    if width is not None and width > REMINDER_MAX_WIDTH_PX:
+        raise TimetableError(f"'{text}' is too wide to fit on one line (try fewer wide letters or a shorter wording).")
+    return text, days
+
+
+def kit_for_day(lessons: list[Lesson], leave_out: set[str] | frozenset = frozenset(),
+                reminders: list[tuple[str, frozenset[str] | None]] = (), day: str | None = None) -> dict:
     """Return {'always', 'workbooks', 'extras', 'items'} for one day, minus anything in leave_out
-    (option names from kit_options(); 'Workbooks' drops every '<Subject> workbook' line)."""
+    (option names from kit_options(); 'Workbooks' drops every '<Subject> workbook' line).
+    Custom reminders (see parse_reminder) that apply to `day` are appended after the rule-based extras."""
     out = {x.lower() for x in leave_out}
     always = [x for x in KIT_ALWAYS if x.lower() not in out]
     subjects: list[str] = []
@@ -592,6 +632,9 @@ def kit_for_day(lessons: list[Lesson], leave_out: set[str] | frozenset = frozens
                 for it in rule["items"]:
                     if it not in extras and it.lower() not in out:
                         extras.append(it)
+    for text, days in reminders:
+        if (days is None or day in days) and text not in extras:
+            extras.append(text)
     items = always + [f"{x} workbook" for x in subjects] + extras
     return {"always": always, "workbooks": subjects, "extras": extras, "items": items}
 
@@ -626,7 +669,8 @@ def _fmt_room_tag(ls: Lesson) -> str:
 
 
 def build_view(tt: Timetable, staff: Staff, show_name_on_cards: bool, logo_path: Path,
-               leave_out: set[str] | frozenset = frozenset()) -> dict:
+               leave_out: set[str] | frozenset = frozenset(),
+               reminders: list = ()) -> dict:
     from PIL import Image
     try:
         with Image.open(logo_path) as im:
@@ -657,7 +701,7 @@ def build_view(tt: Timetable, staff: Staff, show_name_on_cards: bool, logo_path:
                     "move_to": _fmt_room_tag(ls), "fill": st["fill"], "chip": st["chip"], "border": st["border"],
                 })
             wd[d] = {"name": DAY_FULL[d], "short": d, "items": items,
-                     "moves": sum(1 for ls in lessons if ls.move), "kit": kit_for_day(lessons, leave_out)}
+                     "moves": sum(1 for ls in lessons if ls.move), "kit": kit_for_day(lessons, leave_out, reminders, d)}
         weeks[wk] = wd
 
     always = [x.lower() for x in KIT_ALWAYS if x.lower() not in {o.lower() for o in leave_out}]
@@ -817,6 +861,21 @@ def ask_leave_out() -> set[str]:
         print(f"  Please enter numbers between 1 and {len(opts)}.")
 
 
+def ask_reminders() -> list[tuple[str, frozenset[str] | None]]:
+    print(f"\nExtra reminders (optional): up to {MAX_REMINDERS}, max {MAX_REMINDER_CHARS} characters each.")
+    print("  Start with days to limit one, e.g. 'Mon,Thu: Violin'. Press Enter on a blank line to finish.")
+    out: list[tuple[str, frozenset[str] | None]] = []
+    while len(out) < MAX_REMINDERS:
+        raw = input(f"  Reminder {len(out) + 1}: ").strip()
+        if not raw:
+            break
+        try:
+            out.append(parse_reminder(raw))
+        except TimetableError as e:
+            print(f"  {e}")
+    return out
+
+
 def print_summary(tt: Timetable, staff: Staff) -> None:
     print(f"\n{tt.student} - {tt.tutor_group} - tutor room {tt.tutor_room or '?'} - tutor "
           f"{staff.name(tt.tutor_code) if tt.tutor_code else '?'}")
@@ -849,6 +908,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--leave-out", metavar="ITEMS",
                     help="Comma-separated kit items to leave off this student's lists, e.g. \"Lunch,Hair tied back\" "
                          "(skips the prompt). Use \"none\" to include everything.")
+    ap.add_argument("--remind", action="append", metavar="TEXT",
+                    help=f"Extra free-text reminder for the kit lists (max {MAX_REMINDERS}, {MAX_REMINDER_CHARS} chars each). "
+                         "Prefix days to limit it: --remind \"Mon,Thu: Violin\". Skips the prompt; \"none\" = no reminders.")
     ap.add_argument("--yes", action="store_true", help="Skip the 'Looks right?' confirmation")
     ap.add_argument("--refresh-staff", action="store_true", help="Re-download the staff list now")
     ap.add_argument("--offline", action="store_true", help="Don't contact the staff website")
@@ -877,6 +939,12 @@ def main(argv: list[str] | None = None) -> int:
             leave_out = resolve_leave_out([] if args.leave_out.lower() == "none" else args.leave_out.split(","))
         else:
             leave_out = ask_leave_out()
+        if args.remind is not None:
+            reminders = [] if [r.lower() for r in args.remind] == ["none"] else [parse_reminder(r) for r in args.remind]
+            if len(reminders) > MAX_REMINDERS:
+                raise TimetableError(f"At most {MAX_REMINDERS} reminders are allowed (got {len(reminders)}).")
+        else:
+            reminders = ask_reminders()
         staff = Staff.load(refresh=args.refresh_staff, offline=args.offline)
         print_summary(tt, staff)
         if args.debug:
@@ -886,7 +954,7 @@ def main(argv: list[str] | None = None) -> int:
         if not args.yes and not yes_no("\nLooks right? [Y/n] ", True):
             print("Aborted. Run with --inspect to see what is in the PDF.")
             return 1
-        view = build_view(tt, staff, show, logo, leave_out)
+        view = build_view(tt, staff, show, logo, leave_out, reminders)
         tt_path, cards_path, warnings = render_pdfs(view, Path(args.out), name, debug=args.debug)
         print(f"\nWrote {tt_path}\nWrote {cards_path}")
         for w in warnings:
